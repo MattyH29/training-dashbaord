@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Key metrics</title>
+<link rel="stylesheet" href="style.css">
+<script src="shared.js"></script>
+</head>
+<body>
+<div id="msg" class="msg" hidden></div>
+<div class="kpis" id="kpis"></div>
+<script>
+(async () => {
+  const D = await loadData(); if (!D) return;
+  const tw = monday(todayUK()), a = weekStats(D, tw), b = weekStats(D, addDays(tw, -7));
+  // diff text vs last week; `inv` means lower is better (pace)
+  const delta = (cur, prev, unit, d = 1, inv = false) => {
+    if (cur == null || prev == null) return '<span class="d">No comparison yet</span>';
+    const diff = cur - prev;
+    if (Math.abs(diff) < 0.05 * Math.pow(10, -d + 1)) return '<span class="d">Same as last week</span>';
+    const good = inv ? diff < 0 : diff > 0;
+    return `<span class="d ${good ? "good" : "bad"}">${diff > 0 ? "+" : "−"}${num(Math.abs(diff), d)} ${unit} vs last week</span>`;
+  };
+  const cards = [
+    ["Running · this week", num(a.km), "km", delta(a.km, b.km, "km"), "run"],
+    ["Other cardio · this week", num(a.cardio), "h", delta(a.cardio, b.cardio, "h"), "cardio"],
+    ["Gym · this week", a.gym, a.gym === 1 ? "session" : "sessions", delta(a.gym, b.gym, "", 0), "gym"],
+    ["Avg run pace · this week", pace(a.pace), "/km", delta(a.pace == null ? null : a.pace * 60, b.pace == null ? null : b.pace * 60, "s/km", 0, true), "run"],
+  ];
+  $("#kpis").innerHTML = cards.map(([l, v, u, d, c]) =>
+    `<div class="kpi ${c}"><div class="l">${l}</div><div class="v">${v}<small>${u}</small></div>${d}</div>`).join("");
+})();
+</script>
+</body>
+</html>
