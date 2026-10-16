@@ -5,25 +5,64 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Side panel</title>
 <link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="shared.js"></script>
 </head>
 <body class="side">
 <div id="msg" class="msg" hidden></div>
-<div id="out"></div>
+<div id="out" hidden>
+  <div class="card">
+    <h3>Progress, last 12 weeks</h3>
+    <div class="seg" id="tabs" style="width:100%;margin-bottom:10px">
+      <button data-k="run" class="on" style="flex:1">Running</button>
+      <button data-k="cardio" style="flex:1">Cardio</button>
+      <button data-k="gym" style="flex:1">Gym</button>
+    </div>
+    <div class="box" style="height:190px"><canvas id="trend"></canvas></div>
+    <div class="d" id="trendNote" style="margin-top:8px"></div>
+  </div>
+  <div class="card"><h3>Recent sessions</h3><div id="recent"></div></div>
+  <div class="card" id="liftCard"><h3>Lift records</h3><div id="lifts"></div></div>
+</div>
 <script>
 (async () => {
   const D = await loadData(); if (!D) return;
-  const tw = monday(todayUK()), cur = weekStats(D, tw);
-  const prev = [1, 2, 3, 4].map((i) => weekStats(D, addDays(tw, -7 * i)));
-  const avg = (k) => prev.reduce((t, w) => t + w[k], 0) / 4;
+  $("#out").hidden = false;
+  const C = colours();
+  Chart.defaults.color = css("--muted");
+  Chart.defaults.borderColor = css("--line");
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+  Chart.defaults.font.size = 11;
 
-  // This week vs average of the previous 4 full weeks
-  const meter = (name, k, unit, cls, d = 1) => {
-    const av = avg(k), pct = av > 0 ? Math.min(cur[k] / av, 1) * 100 : 0;
-    return `<div class="${cls}" style="margin-bottom:10px"><div class="li" style="border:0;padding:0"><span><span class="dot"></span>${name}</span>
-      <span class="r"><b>${num(cur[k], d)}</b> <small style="display:inline">/ ${num(av, d)} ${unit}</small></span></div>
-      <div class="meter"><i style="width:${pct}%"></i></div></div>`;
+  // 15 weeks of stats so the 4-week average is complete from the first plotted week
+  const tw = monday(todayUK());
+  const weeks = Array.from({ length: 15 }, (_, i) => addDays(tw, -7 * (14 - i)));
+  const stats = weeks.map((w) => weekStats(D, w));
+  const METRICS = {
+    run: { k: "km", unit: "km", d: 1, col: C.run },
+    cardio: { k: "cardio", unit: "h", d: 1, col: C.cardio },
+    gym: { k: "gym", unit: "sessions", d: 0, col: C.gym },
   };
+  let chart;
+  function show(key) {
+    const m = METRICS[key], vals = stats.map((s) => s[m.k]);
+    const avg = vals.map((_, i) => (i < 3 ? null : vals.slice(i - 3, i + 1).reduce((a, b) => a + b, 0) / 4));
+    chart?.destroy();
+    chart = new Chart($("#trend"), {
+      type: "line",
+      data: { labels: weeks.slice(3).map(label), datasets: [
+        { label: "Weekly", data: vals.slice(3), borderColor: m.col, backgroundColor: m.col + "22", fill: true, tension: 0.25, pointRadius: 2.5 },
+        { label: "4-week avg", data: avg.slice(3), borderColor: m.col, borderDash: [5, 4], pointRadius: 0, tension: 0.25, fill: false },
+      ] },
+      options: { responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${num(c.parsed.y, m.d)} ${m.unit}` } } },
+        scales: { y: { beginAtZero: true, ticks: m.d === 0 ? { precision: 0 } : {} }, x: { ticks: { maxTicksLimit: 6 } } } },
+    });
+    document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.k === key));
+    $("#trendNote").textContent = `Weekly ${m.unit} (solid) and 4-week average (dashed). The latest week is still in progress.`;
+  }
+  document.querySelectorAll("#tabs button").forEach((b) => (b.onclick = () => show(b.dataset.k)));
+  show("run");
 
   // Latest 6 sessions across activities and gym (no names are exported)
   const items = [
@@ -32,6 +71,8 @@
     ...D.gym.map((g) => ({ d: g.d, t: "Gym", c: "gym",
       s: [g.min ? Math.round(g.min) + " min" : "", g.vol ? num(g.vol, 0) + " kg" : ""].filter(Boolean).join(" · ") })),
   ].sort((x, y) => y.d.localeCompare(x.d)).slice(0, 6);
+  $("#recent").innerHTML = items.map((i) =>
+    `<div class="li ${i.c}"><span><span class="dot"></span>${i.t}<small>${label(i.d)}</small></span><span class="r">${i.s || "–"}</span></div>`).join("");
 
   // Best recorded top set and best estimated 1RM per main lift (all time)
   const lifts = MAIN_LIFTS.map((n) => {
@@ -41,14 +82,7 @@
     const est = r.reduce((b, l) => (l.e1rm != null && (!b || l.e1rm > b.e1rm) ? l : b), null);
     return `<div class="li"><b>${n}</b><span class="r">${num(est?.e1rm)} kg e1RM<small>Best set ${num(top?.kg)} kg${top?.reps ? " × " + top.reps : ""}</small></span></div>`;
   }).join("");
-
-  $("#out").innerHTML = `
-    <div class="card"><h3>This week vs 4-week average</h3>
-      ${meter("Running", "km", "km", "run")}${meter("Other cardio", "cardio", "h", "cardio")}${meter("Gym", "gym", "sessions", "gym", 0)}
-      <div class="d">Bar fills up to your 4-week average.</div></div>
-    <div class="card"><h3>Recent sessions</h3>${items.map((i) =>
-      `<div class="li ${i.c}"><span><span class="dot"></span>${i.t}<small>${label(i.d)}</small></span><span class="r">${i.s || "–"}</span></div>`).join("")}</div>
-    ${lifts ? `<div class="card"><h3>Lift records</h3>${lifts}</div>` : ""}`;
+  if (lifts) $("#lifts").innerHTML = lifts; else $("#liftCard").remove();
 })();
 </script>
 </body>
