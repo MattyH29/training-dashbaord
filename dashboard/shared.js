@@ -1,6 +1,6 @@
 // Helpers shared by index.html (charts), kpi.html and side.html.
-// Theme: add ?theme=dark to the page URL when your Notion is in dark mode.
-document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") === "dark" ? "dark" : "light";
+// Theme: dark by default. Add ?theme=light to the page URL for a light Notion page.
+document.documentElement.dataset.theme = new URLSearchParams(location.search).get("theme") === "light" ? "light" : "dark";
 
 const $ = (s) => document.querySelector(s);
 const sum = (a, f) => a.reduce((t, r) => t + (f(r) || 0), 0);
