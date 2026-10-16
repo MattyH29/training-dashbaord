@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chart panel</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="shared.js"></script>
+<style>
+  html, body { height: 100%; }
+  .panel { height: 100%; display: flex; flex-direction: column; gap: 8px; background: var(--card);
+    border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .tools { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .tools .r { display: flex; gap: 8px; align-items: center; }
+  .seg { flex-wrap: wrap; }
+  .cap { color: var(--muted); font-size: 12px; }
+  .plot { position: relative; flex: 1; min-height: 150px; }
+</style>
+</head>
+<body>
+<div id="msg" class="msg" hidden></div>
+<div class="panel" id="ui">
+  <div class="tools">
+    <div class="seg" id="tabs">
+      <button data-k="dist" class="on">Distance</button><button data-k="pace">Pace</button>
+      <button data-k="elev">Elevation</button><button data-k="time">Time</button>
+      <button data-k="gym">Gym</button><button data-k="lifts">Lifts</button>
+    </div>
+    <div class="r">
+      <select id="lift" hidden aria-label="Exercise"></select>
+      <div class="seg" id="range">
+        <button data-w="4">4w</button><button data-w="12" class="on">12w</button>
+        <button data-w="26">6m</button><button data-w="all">All</button>
+      </div>
+    </div>
+  </div>
+  <div class="cap" id="cap"></div>
+  <div class="plot"><canvas id="c"></canvas></div>
+</div>
+<script>
+(async () => {
+  const D = await loadData();
+  if (!D) { $("#ui").hidden = true; return; }
+  const C = colours();
+  Chart.defaults.color = css("--muted");
+  Chart.defaults.borderColor = css("--line");
+  Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
+
+  let tab = "dist", range = "12", chart;
+  const acts = D.activities.map((a) => ({ ...a, g: groupOf(a.type) }));
+
+  const weeksFor = () => {
+    const end = monday(todayUK());
+    let start;
+    if (range === "all") {
+      const all = [...D.activities, ...D.gym, ...D.lifts].map((r) => r.d).sort();
+      start = all.length ? monday(all[0]) : end;
+    } else start = addDays(end, -7 * (Number(range) - 1));
+    const out = [];
+    for (let w = start; w <= end; w = addDays(w, 7)) out.push(w);
+    return out;
+  };
+  const group = (rows, weeks) => {
+    const m = new Map(weeks.map((w) => [w, []]));
+    rows.forEach((r) => { const k = monday(r.d); if (m.has(k)) m.get(k).push(r); });
+    return weeks.map((w) => m.get(w));
+  };
+  const barCfg = (labels, vals, color, unit, d = 1) => ({
+    type: "bar",
+    data: { labels, datasets: [{ data: vals, backgroundColor: color, borderRadius: 3 }] },
+    options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${num(c.parsed.y, d)} ${unit}` } } },
+      scales: { y: { beginAtZero: true, ticks: d === 0 ? { precision: 0 } : {} } } },
+  });
+
+  // Lift dropdown: main lifts first
+  const names = [...new Set(D.lifts.map((l) => l.ex))];
+  const rank = (n) => (MAIN_LIFTS.includes(n) ? MAIN_LIFTS.indexOf(n) : 99);
+  names.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  $("#lift").innerHTML = names.map((n) => `<option>${n}</option>`).join("");
+
+  function build() {
+    const weeks = weeksFor(), labels = weeks.map(label);
+    const runs = group(acts.filter((a) => a.g === "Run"), weeks);
+    const gym = group(D.gym, weeks);
+
+    if (tab === "dist") {
+      const v = runs.map((w) => sum(w, (r) => r.km));
+      return { cap: "Weekly running distance (km)", ok: v.some(Boolean), cfg: barCfg(labels, v, C.run, "km") };
+    }
+    if (tab === "pace") {
+      const v = runs.map((w) => {
+        const ok = w.filter((r) => r.km > 0 && r.min > 0), km = sum(ok, (r) => r.km);
+        return km > 0 ? sum(ok, (r) => r.min) / km : null;
+      });
+      return { cap: "Average running pace (min/km, total time ÷ total distance, faster is higher)", ok: v.some((x) => x != null), cfg: {
+        type: "line",
+        data: { labels, datasets: [{ data: v, borderColor: C.run, backgroundColor: C.run, tension: 0.25, pointRadius: 3, spanGaps: true }] },
+        options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${pace(c.parsed.y)} min/km` } } },
+          scales: { y: { reverse: true, ticks: { callback: (x) => pace(x) } } } } } };
+    }
+    if (tab === "elev") {
+      const v = runs.map((w) => { const e = w.filter((r) => r.elev != null); return e.length ? sum(e, (r) => r.elev) : null; });
+      return { cap: "Weekly running elevation gain (m). Weeks without elevation data are left empty.", ok: v.some((x) => x != null), cfg: barCfg(labels, v, C.run, "m", 0) };
+    }
+    if (tab === "time") {
+      const wk = group(acts, weeks);
+      const col = { Run: C.run, Cycling: C.ride, Swim: C.cardio, "Other cardio": C.other };
+      const ds = ["Run", "Cycling", "Swim", "Other cardio"].map((g) => ({ label: g, backgroundColor: col[g], borderRadius: 2,
+        data: wk.map((w) => sum(w.filter((r) => r.g === g), (r) => r.min) / 60) }));
+      ds.push({ label: "Gym", backgroundColor: C.gym, borderRadius: 2, data: gym.map((w) => sum(w, (r) => r.min) / 60) });
+      return { cap: "Weekly training time by discipline (hours)", ok: ds.some((d) => d.data.some(Boolean)), cfg: {
+        type: "bar", data: { labels, datasets: ds },
+        options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${num(c.parsed.y, 2)} h` } } },
+          scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } } } };
+    }
+    if (tab === "gym") {
+      const v = gym.map((w) => w.length);
+      return { cap: "Gym sessions per week", ok: v.some(Boolean), cfg: barCfg(labels, v, C.gym, "sessions", 0) };
+    }
+    // lifts
+    const ex = $("#lift").value, pts = D.lifts.filter((l) => l.ex === ex && l.d >= weeks[0]);
+    const yr = todayUK().slice(0, 4);
+    return { cap: `${ex}: top set weight (solid) and estimated 1RM, Epley (dashed), kg`, ok: pts.length > 0, cfg: {
+      type: "line",
+      data: { labels: pts.map((p) => label(p.d) + (p.d.slice(0, 4) !== yr ? " " + p.d.slice(2, 4) : "")), datasets: [
+        { label: "Top set (kg)", data: pts.map((p) => p.kg), borderColor: C.gym, backgroundColor: C.gym, tension: 0.2, pointRadius: 3 },
+        { label: "Est. 1RM (kg)", data: pts.map((p) => p.e1rm), borderColor: C.gym, borderDash: [6, 4], tension: 0.2, pointRadius: 2 } ] },
+      options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } },
+        tooltip: { callbacks: { afterBody: (i) => (pts[i[0].dataIndex].reps ? `Reps: ${pts[i[0].dataIndex].reps}` : "") } } } } } };
+  }
+
+  function render() {
+    chart?.destroy(); chart = null;
+    const plot = $(".plot");
+    plot.querySelector(".empty")?.remove();
+    $("#lift").hidden = tab !== "lifts";
+    const r = build();
+    $("#cap").textContent = r.cap;
+    $("#c").style.display = r.ok ? "" : "none";
+    if (!r.ok) { plot.insertAdjacentHTML("beforeend", '<div class="empty">No data in this range</div>'); return; }
+    r.cfg.options = Object.assign({ responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false } }, r.cfg.options);
+    chart = new Chart($("#c"), r.cfg);
+  }
+
+  const wire = (sel, attr, set) => document.querySelectorAll(sel + " button").forEach((b) => (b.onclick = () => {
+    document.querySelectorAll(sel + " button").forEach((x) => x.classList.toggle("on", x === b));
+    set(b.dataset[attr]); render();
+  }));
+  wire("#tabs", "k", (v) => (tab = v));
+  wire("#range", "w", (v) => (range = v));
+  $("#lift").onchange = render;
+  render();
+})();
+</script>
+</body>
+</html>
