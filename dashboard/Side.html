@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Side panel</title>
+<link rel="stylesheet" href="style.css">
+<script src="shared.js"></script>
+</head>
+<body class="side">
+<div id="msg" class="msg" hidden></div>
+<div id="out"></div>
+<script>
+(async () => {
+  const D = await loadData(); if (!D) return;
+  const tw = monday(todayUK()), cur = weekStats(D, tw);
+  const prev = [1, 2, 3, 4].map((i) => weekStats(D, addDays(tw, -7 * i)));
+  const avg = (k) => prev.reduce((t, w) => t + w[k], 0) / 4;
+
+  // This week vs average of the previous 4 full weeks
+  const meter = (name, k, unit, cls, d = 1) => {
+    const av = avg(k), pct = av > 0 ? Math.min(cur[k] / av, 1) * 100 : 0;
+    return `<div class="${cls}" style="margin-bottom:10px"><div class="li" style="border:0;padding:0"><span><span class="dot"></span>${name}</span>
+      <span class="r"><b>${num(cur[k], d)}</b> <small style="display:inline">/ ${num(av, d)} ${unit}</small></span></div>
+      <div class="meter"><i style="width:${pct}%"></i></div></div>`;
+  };
+
+  // Latest 6 sessions across activities and gym (no names are exported)
+  const items = [
+    ...D.activities.map((a) => ({ d: a.d, t: a.type, c: groupOf(a.type) === "Run" ? "run" : "cardio",
+      s: [a.km > 0 ? num(a.km) + " km" : "", a.min ? Math.round(a.min) + " min" : ""].filter(Boolean).join(" · ") })),
+    ...D.gym.map((g) => ({ d: g.d, t: "Gym", c: "gym",
+      s: [g.min ? Math.round(g.min) + " min" : "", g.vol ? num(g.vol, 0) + " kg" : ""].filter(Boolean).join(" · ") })),
+  ].sort((x, y) => y.d.localeCompare(x.d)).slice(0, 6);
+
+  // Best recorded top set and best estimated 1RM per main lift (all time)
+  const lifts = MAIN_LIFTS.map((n) => {
+    const r = D.lifts.filter((l) => l.ex === n);
+    if (!r.length) return "";
+    const top = r.reduce((b, l) => (l.kg != null && (!b || l.kg > b.kg) ? l : b), null);
+    const est = r.reduce((b, l) => (l.e1rm != null && (!b || l.e1rm > b.e1rm) ? l : b), null);
+    return `<div class="li"><b>${n}</b><span class="r">${num(est?.e1rm)} kg e1RM<small>Best set ${num(top?.kg)} kg${top?.reps ? " × " + top.reps : ""}</small></span></div>`;
+  }).join("");
+
+  $("#out").innerHTML = `
+    <div class="card"><h3>This week vs 4-week average</h3>
+      ${meter("Running", "km", "km", "run")}${meter("Other cardio", "cardio", "h", "cardio")}${meter("Gym", "gym", "sessions", "gym", 0)}
+      <div class="d">Bar fills up to your 4-week average.</div></div>
+    <div class="card"><h3>Recent sessions</h3>${items.map((i) =>
+      `<div class="li ${i.c}"><span><span class="dot"></span>${i.t}<small>${label(i.d)}</small></span><span class="r">${i.s || "–"}</span></div>`).join("")}</div>
+    ${lifts ? `<div class="card"><h3>Lift records</h3>${lifts}</div>` : ""}`;
+})();
+</script>
+</body>
+</html>
