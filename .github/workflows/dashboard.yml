@@ -1,0 +1,49 @@
+name: Build and deploy dashboard
+
+on:
+  schedule:
+    - cron: "30 5 * * *"   # daily, 05:30 UTC (06:30 or 07:30 UK time depending on DST)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["dashboard/**", "build_data.py", ".github/workflows/dashboard.yml"]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install requests
+
+      - name: Export Notion data
+        run: python build_data.py
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_ACTIVITIES_DB: ${{ secrets.NOTION_ACTIVITIES_DB }}
+          NOTION_GYM_DB: ${{ secrets.NOTION_GYM_DB }}
+          NOTION_LIFTS_DB: ${{ secrets.NOTION_LIFTS_DB }}
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dashboard
+      - id: deployment
+        uses: actions/deploy-pages@v4
