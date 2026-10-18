@@ -22,7 +22,11 @@
     <div class="d" id="trendNote" style="margin-top:8px"></div>
   </div>
   <div class="card"><h3>Recent sessions</h3><div id="recent"></div></div>
-  <div class="card" id="liftCard"><h3>Lift records</h3><div id="lifts"></div></div>
+  <div class="card" id="liftCard">
+    <div class="row" style="margin-bottom:8px"><h3 style="margin:0">Lift records</h3><select id="liftSel" aria-label="Exercise"></select></div>
+    <div id="lifts"></div>
+    <div class="d" style="margin-top:8px">Weights as recorded in Hevy (dumbbell lifts are per dumbbell). 1RM is estimated (Epley).</div>
+  </div>
 </div>
 <script>
 (async () => {
@@ -74,15 +78,28 @@
   $("#recent").innerHTML = items.map((i) =>
     `<div class="li ${i.c}"><span><span class="dot"></span>${i.t}<small>${label(i.d)}</small></span><span class="r">${i.s || "–"}</span></div>`).join("");
 
-  // Best recorded top set and best estimated 1RM per main lift (all time)
-  const lifts = MAIN_LIFTS.map((n) => {
-    const r = D.lifts.filter((l) => l.ex === n);
-    if (!r.length) return "";
-    const top = r.reduce((b, l) => (l.kg != null && (!b || l.kg > b.kg) ? l : b), null);
-    const est = r.reduce((b, l) => (l.e1rm != null && (!b || l.e1rm > b.e1rm) ? l : b), null);
-    return `<div class="li"><b>${n}</b><span class="r">${num(est?.e1rm)} kg e1RM<small>Best set ${num(top?.kg)} kg${top?.reps ? " × " + top.reps : ""}</small></span></div>`;
-  }).join("");
-  if (lifts) $("#lifts").innerHTML = lifts; else $("#liftCard").remove();
+  // Lift records: pick any exercise that exists in Key Lifts
+  const names = [...new Set(D.lifts.map((l) => l.ex))];
+  const rank = (n) => (MAIN_LIFTS.includes(n) ? MAIN_LIFTS.indexOf(n) : 99);
+  names.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  if (!names.length) $("#liftCard").remove();
+  else {
+    $("#liftSel").innerHTML = names.map((n) => `<option>${n}</option>`).join("");
+    const showLift = () => {
+      const r = D.lifts.filter((l) => l.ex === $("#liftSel").value).sort((a, b) => a.d.localeCompare(b.d));
+      const best = (f) => r.reduce((b, l) => (l[f] != null && (!b || l[f] > b[f]) ? l : b), null);
+      const top = best("kg"), est = best("e1rm"), last = r[r.length - 1];
+      const set = (l) => (l ? `${num(l.kg)} kg${l.reps ? " × " + l.reps : ""}` : "–");
+      const row = (k, v, sub) => `<div class="li"><span>${k}</span><span class="r"><b>${v}</b>${sub ? `<small>${sub}</small>` : ""}</span></div>`;
+      $("#lifts").innerHTML =
+        row("Best est. 1RM", num(est?.e1rm) + " kg", est ? label(est.d) : "") +
+        row("Heaviest top set", set(top), top ? label(top.d) : "") +
+        row("Latest session", set(last), last ? label(last.d) : "") +
+        row("Sessions logged", r.length, "");
+    };
+    $("#liftSel").onchange = showLift;
+    showLift();
+  }
 })();
 </script>
 </body>
