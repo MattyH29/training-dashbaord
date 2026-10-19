@@ -1,5 +1,5 @@
 // Training analysis page. Uses helpers from shared.js.
-let D, ACTS, RUNS, C, BAD, RANGE = "12", RAMP = "km", SORT = { k: "d", dir: -1 };
+let D, ACTS, RUNS, C, BAD, RANGE = "12", RAMP = "km", TAB = "run", SORT = { k: "d", dir: -1 };
 const charts = {};
 const kmOf = (w) => sum(w, (r) => r.km);
 const days = (a, b) => Math.round((Date.parse(b) - Date.parse(a)) / 864e5);
@@ -141,7 +141,7 @@ function renderRamp() {
   $("#rampN").textContent = r == null ? "–" : r.toFixed(2) + "×";
   $("#rampN").style.color = v[2];
   $("#rampV").textContent = v[1]; $("#rampV").style.color = v[2];
-  $("#rampTxt").innerHTML = `Last full week compared with the average of the 4 weeks before it. Roughly 0.8 to 1.3× is a steady build and above 1.5× is a spike.<br><br>This week so far: <b>${num(val[val.length - 1])} ${unit}</b>`;
+  $("#rampTxt").innerHTML = `Last full week compared with the average of the 4 weeks before it. Roughly 0.8 to 1.3× is a steady build and above 1.5× is a spike. A simple guide, not medical advice.<br><br>This week so far: <b>${num(val[val.length - 1])} ${unit}</b>`;
 }
 
 // ---------- 4. Long runs and time on feet ----------
@@ -257,10 +257,19 @@ function renderTable() {
 }
 
 function renderRange() { renderRamp(); renderLong(); renderDonuts(); renderEff(); }
+function renderActive() { if (TAB === "run") renderRange(); else renderStrength(); }
+function showTab(t) {
+  TAB = t;
+  $("#tab-run").hidden = t !== "run"; $("#tab-str").hidden = t !== "str";
+  document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("on", b.dataset.t === t));
+  try { history.replaceState(null, "", t === "str" ? "#strength" : "#running"); } catch {}
+  Object.values(charts).forEach((c) => c.resize());
+  renderActive();
+}
 
 async function init() {
   D = await loadData();
-  if (!D) return;
+  if (!D) { $("#tabs").hidden = true; return; }
   D.plan = D.plan || []; D.races = D.races || [];
   $("#content").hidden = false;
   C = colours(); BAD = css("--bad");
@@ -274,8 +283,10 @@ async function init() {
     document.querySelectorAll(sel + " button").forEach((x) => x.classList.toggle("on", x === b));
     set(b.dataset[attr]);
   }));
-  wire("#range", "w", (v) => { RANGE = v; renderRange(); });
+  wire("#range", "w", (v) => { RANGE = v; renderActive(); });
   wire("#rampTabs", "k", (v) => { RAMP = v; renderRamp(); });
   renderHero(); renderPlan(); renderHeat(); renderTable(); renderRange();
+  document.querySelectorAll("#tabs button").forEach((b) => (b.onclick = () => showTab(b.dataset.t)));
+  if (location.hash === "#strength") showTab("str");
 }
 init();
