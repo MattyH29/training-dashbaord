@@ -128,6 +128,18 @@
       <p class="note">Share of running distance by run length, selected range.</p>
     </section>
 
+    <section class="card s8">
+      <div class="ch"><h3>Easy vs hard running</h3><span class="d">Hours per week by average heart rate</span></div>
+      <div class="stats" id="intStrip"></div>
+      <div class="box"><canvas id="intChart"></canvas></div>
+      <p class="note">Each run is classed by its average heart rate as a share of max HR. An average can hide hard intervals inside an easy-looking run, so treat hard time as a minimum. Runs without heart rate are left out.</p>
+    </section>
+    <section class="card s4">
+      <div class="ch"><h3>Intensity split</h3></div>
+      <div class="donut"><div class="dbox"><canvas id="int"></canvas><div class="dc" id="intC"></div></div><div class="legend" id="intLg"></div></div>
+      <p class="note" id="intNote"></p>
+    </section>
+
     <section class="card s12">
       <div class="ch"><h3>Consistency</h3><span class="d">Last 26 weeks. Colour is the main activity of the day, shade is total time.</span></div>
       <div class="stats" id="heatStrip"></div>
