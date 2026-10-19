@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Training analysis</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="shared.js"></script>
+<style>
+  .page { max-width: 1280px; margin: 0 auto; padding: 18px 16px 40px; }
+  .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: -.02em; }
+  .sub { margin: 2px 0 0; color: var(--muted); }
+  .ctl { display: flex; align-items: center; gap: 12px; }
+  .a-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px; }
+  .s4 { grid-column: span 4; } .s5 { grid-column: span 5; } .s6 { grid-column: span 6; }
+  .s7 { grid-column: span 7; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; }
+  .ch { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .ch h3 { margin: 0; font-size: 14px; } .ch .seg button { padding: 3px 10px; }
+  .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+  .hero { display: grid; grid-template-columns: minmax(220px, 5fr) 7fr; gap: 24px; align-items: center; padding: 20px 24px;
+    background: linear-gradient(135deg, var(--card), color-mix(in srgb, var(--run) 14%, var(--card))); }
+  .big { font-size: clamp(72px, 12vw, 130px); font-weight: 800; line-height: 1; letter-spacing: -.05em; font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, var(--run), var(--ride)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .unit { font-size: 16px; color: var(--muted); } .rname { font-size: 22px; font-weight: 700; }
+  .tiles { margin: 14px 0 0; gap: 10px 30px; } .tiles .stat b { font-size: 22px; }
+  .pbar { position: relative; height: 8px; background: var(--line); border-radius: 4px; margin: 16px 0 6px; }
+  .pbar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--run), var(--ride)); }
+  .pbar u { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--gym); }
+  .ring { --p: 0; --a: var(--good); position: relative; width: 120px; height: 120px; border-radius: 50%; margin: 6px auto 10px;
+    background: conic-gradient(var(--a) calc(var(--p) * 1%), var(--line) 0); display: grid; place-items: center; }
+  .ring::before { content: ""; position: absolute; inset: 11px; border-radius: 50%; background: var(--card); }
+  .ring b { position: relative; font-size: 26px; }
+  .badge { font-size: 44px; font-weight: 800; letter-spacing: -.03em; line-height: 1.1; }
+  .verdict { font-size: 15px; font-weight: 600; margin: 2px 0 8px; }
+  .donut { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .dbox { position: relative; width: 150px; height: 150px; flex: none; }
+  .dc { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; pointer-events: none; line-height: 1.2; }
+  .dc b { font-size: 20px; display: block; } .dc span { font-size: 11px; color: var(--muted); }
+  .legend { flex: 1; min-width: 140px; }
+  .lg { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 0; }
+  .lg i { width: 9px; height: 9px; border-radius: 2px; } .lg b { margin-left: auto; padding-left: 10px; font-weight: 600; }
+  .stat b.good { color: var(--good); } .stat b.bad { color: var(--bad); }
+  .stats { gap: 6px 26px; margin: 0 0 10px; }
+  .heatwrap { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; }
+  .hdays { display: grid; grid-template-rows: repeat(7, 14px); gap: 3px; margin-top: 19px; font-size: 10px; color: var(--muted); }
+  .hmonths { display: grid; grid-template-columns: repeat(26, 14px); column-gap: 3px; height: 16px; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  .hmonths span { white-space: nowrap; }
+  .heat { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 14px); grid-auto-columns: 14px; gap: 3px; }
+  .hc { border-radius: 3px; background: var(--line); opacity: .55; } .hc.fut { background: none; border: 1px dashed var(--line); opacity: .4; }
+  .hleg { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .hleg i { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; }
+  .tblwrap { max-height: 340px; overflow: auto; }
+  th[data-k] { cursor: pointer; user-select: none; } th[data-k]:hover { color: var(--text); }
+  .msgbox { color: var(--muted); padding: 24px 6px; text-align: center; }
+  @media (max-width: 900px) { .s4, .s5, .s6, .s7, .s8 { grid-column: span 12; } .hero { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="top">
+    <div><h1>Training analysis</h1><p class="sub">Race readiness, load, long runs, efficiency and consistency</p></div>
+    <div class="ctl">
+      <div class="seg" id="range"><button data-w="4">4w</button><button data-w="12" class="on">12w</button><button data-w="26">6m</button><button data-w="all">All</button></div>
+      <span class="updated" id="updated"></span>
+    </div>
+  </header>
+  <div id="msg" class="msg" hidden></div>
+  <div id="content" class="a-grid" hidden>
+
+    <section class="card hero s12" id="hero"></section>
+
+    <section class="card s8">
+      <div class="ch"><h3>Plan vs actual</h3><span class="d">Weekly km: 7 weeks back, 4 ahead</span></div>
+      <div id="planMsg" class="msgbox" hidden></div>
+      <div id="planMain"><div class="box"><canvas id="planChart"></canvas></div></div>
+    </section>
+    <section class="card s4">
+      <div class="ch"><h3>Plan adherence</h3></div>
+      <div id="planSide">
+        <div class="ring" id="ring"><b id="ringN">–</b></div>
+        <div class="d" id="ringTxt" style="text-align:center"></div>
+      </div>
+    </section>
+
+    <section class="card s8">
+      <div class="ch"><h3>Ramp rate</h3>
+        <div class="seg" id="rampTabs"><button data-k="km" class="on">Run km</button><button data-k="hrs">All hours</button></div></div>
+      <div class="box"><canvas id="rampChart"></canvas></div>
+    </section>
+    <section class="card s4">
+      <div class="ch"><h3>Last full week</h3></div>
+      <div class="badge" id="rampN">–</div><div class="verdict" id="rampV"></div>
+      <div class="d" id="rampTxt"></div>
+    </section>
+
+    <section class="card s8">
+      <div class="ch"><h3>Long runs and time on feet</h3></div>
+      <div class="stats" id="longStrip"></div>
+      <div class="box"><canvas id="longChart"></canvas></div>
+    </section>
+    <section class="card s4">
+      <div class="ch"><h3>Training time mix</h3></div>
+      <div class="donut"><div class="dbox"><canvas id="mix"></canvas><div class="dc" id="mixC"></div></div><div class="legend" id="mixLg"></div></div>
+      <p class="note">Hours by discipline in the selected range.</p>
+    </section>
+
+    <section class="card s7">
+      <div class="ch"><h3>Efficiency: pace vs heart rate</h3></div>
+      <div class="stats" id="effStrip"></div>
+      <div class="box"><canvas id="effChart"></canvas></div>
+      <p class="note">Each dot is a run of 2 km or more. Faster is to the right and lower heart rate is lower, so the lower-right is better.</p>
+    </section>
+    <section class="card s5">
+      <div class="ch"><h3>Where the kilometres come from</h3></div>
+      <div class="donut"><div class="dbox"><canvas id="bands"></canvas><div class="dc" id="bandsC"></div></div><div class="legend" id="bandsLg"></div></div>
+      <p class="note">Share of running distance by run length, selected range.</p>
+    </section>
+
+    <section class="card s12">
+      <div class="ch"><h3>Consistency</h3><span class="d">Last 26 weeks. Colour is the main activity of the day, shade is total time.</span></div>
+      <div class="stats" id="heatStrip"></div>
+      <div class="heatwrap">
+        <div class="hdays"><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span></div>
+        <div><div class="hmonths" id="hm"></div><div class="heat" id="heat"></div></div>
+      </div>
+      <div class="hleg"><span><i style="background:var(--run)"></i>Run</span><span><i style="background:var(--cardio)"></i>Other cardio</span><span><i style="background:var(--gym)"></i>Gym</span><span>Darker means longer</span></div>
+    </section>
+
+    <section class="card s12">
+      <div class="ch"><h3>Run log</h3><span class="d">Latest 30 runs. Click a column to sort. m/beat is metres covered per heartbeat, higher is more efficient.</span></div>
+      <div class="tblwrap" id="tbl"></div>
+    </section>
+  </div>
+</main>
+<script src="analysis.js"></script>
+</body>
+</html>
