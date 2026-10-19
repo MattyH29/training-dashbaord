@@ -40,6 +40,8 @@ jobs:
           NOTION_ACTIVITIES_DB: ${{ secrets.NOTION_ACTIVITIES_DB }}
           NOTION_GYM_DB: ${{ secrets.NOTION_GYM_DB }}
           NOTION_LIFTS_DB: ${{ secrets.NOTION_LIFTS_DB }}
+          NOTION_PLAN_DB: ${{ secrets.NOTION_PLAN_DB }}
+          NOTION_RACES_DB: ${{ secrets.NOTION_RACES_DB }}
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
