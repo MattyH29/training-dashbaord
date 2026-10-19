@@ -16,6 +16,8 @@
   .seg { flex-wrap: wrap; }
   .cap { color: var(--muted); font-size: 12px; }
   .plot { position: relative; flex: 1; min-height: 150px; }
+  .stats { gap: 6px 26px; margin: 0; }
+  .stat b { font-size: 17px; } .stat b.good { color: var(--good); } .stat b.bad { color: var(--bad); }
 </style>
 </head>
 <body>
@@ -23,9 +25,8 @@
 <div class="panel" id="ui">
   <div class="tools">
     <div class="seg" id="tabs">
-      <button data-k="dist" class="on">Distance</button><button data-k="pace">Pace</button>
-      <button data-k="elev">Elevation</button><button data-k="time">Time</button>
-      <button data-k="gym">Gym</button><button data-k="lifts">Lifts</button>
+      <button data-k="kmpace" class="on">Km + Pace</button><button data-k="kmelev">Km + Elev</button>
+      <button data-k="pacehr">Pace + HR</button><button data-k="gym">Gym</button><button data-k="lifts">Lifts</button>
     </div>
     <div class="r">
       <select id="lift" hidden aria-label="Exercise"></select>
@@ -35,6 +36,7 @@
       </div>
     </div>
   </div>
+  <div class="stats" id="strip"></div>
   <div class="cap" id="cap"></div>
   <div class="plot"><canvas id="c"></canvas></div>
 </div>
@@ -42,13 +44,13 @@
 (async () => {
   const D = await loadData();
   if (!D) { $("#ui").hidden = true; return; }
-  const C = colours();
+  const C = colours(), BAD = css("--bad");
   Chart.defaults.color = css("--muted");
   Chart.defaults.borderColor = css("--line");
   Chart.defaults.font.family = getComputedStyle(document.body).fontFamily;
 
-  let tab = "dist", range = "12", chart;
-  const acts = D.activities.map((a) => ({ ...a, g: groupOf(a.type) }));
+  let tab = "kmpace", range = "12", chart;
+  const runActs = D.activities.filter((a) => groupOf(a.type) === "Run");
 
   const weeksFor = () => {
     const end = monday(todayUK());
@@ -66,68 +68,114 @@
     rows.forEach((r) => { const k = monday(r.d); if (m.has(k)) m.get(k).push(r); });
     return weeks.map((w) => m.get(w));
   };
-  const barCfg = (labels, vals, color, unit, d = 1) => ({
-    type: "bar",
-    data: { labels, datasets: [{ data: vals, backgroundColor: color, borderRadius: 3 }] },
-    options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${num(c.parsed.y, d)} ${unit}` } } },
-      scales: { y: { beginAtZero: true, ticks: d === 0 ? { precision: 0 } : {} } } },
-  });
 
-  // Lift dropdown: main lifts first
+  // ---- per-week metrics (input: array of run rows) ----
+  const kmOf = (w) => sum(w, (r) => r.km);
+  const elevOf = (w) => { const e = w.filter((r) => r.elev != null); return e.length ? sum(e, (r) => r.elev) : null; };
+  const paceOf = (w) => { const v = w.filter((r) => r.km > 0 && r.min > 0), km = sum(v, (r) => r.km); return km > 0 ? sum(v, (r) => r.min) / km : null; };
+  const hrOf = (w) => { const v = w.filter((r) => r.hr > 0 && r.min > 0), t = sum(v, (r) => r.min); return t > 0 ? sum(v, (r) => r.hr * r.min) / t : null; }; // weighted by duration
+  const maxIdx = (v) => { let i = -1; v.forEach((x, k) => { if (x != null && (i < 0 || x > v[i])) i = k; }); return i; };
+
+  // ---- summary strip helpers ----
+  const S = (l, v, c = "") => `<div class="stat"><b class="${c}">${v}</b><span>${l}</span></div>`;
+  const pct = (cur, prev) => (prev > 0 ? ((cur - prev) / prev) * 100 : null);
+  const pctS = (l, p) => (p == null ? S(l, "–") : S(l, `${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(0)}%`, p > 0 ? "good" : p < 0 ? "bad" : ""));
+
+  // ---- chart config builder: ds = [{type,label,data,color,axis,fmt,dash}] ----
+  const cfgOf = (labels, ds, axes, afterBody) => {
+    const datasets = ds.map((d) => ({ type: d.type, label: d.label, data: d.data, yAxisID: d.axis, fmt: d.fmt,
+      ...(d.type === "bar" ? { backgroundColor: d.color, borderRadius: 3, order: 2 }
+        : { borderColor: d.color, backgroundColor: d.color, tension: 0.25, pointRadius: 3, spanGaps: true, order: 1, borderDash: d.dash || [] }) }));
+    const scales = {};
+    axes.forEach((a) => { scales[a.id] = { position: a.id === "y" ? "left" : "right", reverse: !!a.rev, beginAtZero: !!a.zero,
+      title: { display: true, text: a.t }, grid: { drawOnChartArea: a.id === "y" },
+      ticks: { ...(a.fmt ? { callback: a.fmt } : {}), ...(a.int ? { precision: 0 } : {}) } }; });
+    return { type: ds.some((d) => d.type === "bar") ? "bar" : "line", data: { labels, datasets },
+      options: { plugins: { legend: { display: ds.length > 1, position: "bottom", labels: { boxWidth: 10 } },
+        tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${c.dataset.fmt ? c.dataset.fmt(c.parsed.y) : num(c.parsed.y)}`, ...(afterBody ? { afterBody } : {}) } } }, scales } };
+  };
+
+  // Lift dropdown: compare mode first, then every exercise in Key Lifts
   const names = [...new Set(D.lifts.map((l) => l.ex))];
   const rank = (n) => (MAIN_LIFTS.includes(n) ? MAIN_LIFTS.indexOf(n) : 99);
   names.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
-  $("#lift").innerHTML = names.map((n) => `<option>${n}</option>`).join("");
+  $("#lift").innerHTML = '<option value="__cmp">Compare main lifts</option>' + names.map((n) => `<option>${n}</option>`).join("");
 
   function build() {
-    const weeks = weeksFor(), labels = weeks.map(label);
-    const runs = group(acts.filter((a) => a.g === "Run"), weeks);
-    const gym = group(D.gym, weeks);
+    const weeks = weeksFor(), labels = weeks.map(label), n = weeks.length;
+    const prev = range === "all" ? null : weeks.map((w) => addDays(w, -7 * n));
+    const vsL = `vs previous ${n} wks`;
+    const wk = group(runActs, weeks), pw = prev ? group(runActs, prev) : null;
+    const km = wk.map(kmOf), elev = wk.map(elevOf), pc = wk.map(paceOf), hr = wk.map(hrOf);
+    const has = (v) => v.some((x) => x != null && x !== 0);
 
-    if (tab === "dist") {
-      const v = runs.map((w) => sum(w, (r) => r.km));
-      return { cap: "Weekly running distance (km)", ok: v.some(Boolean), cfg: barCfg(labels, v, C.run, "km") };
+    if (tab === "kmpace") {
+      const t = sum(km, (x) => x), bi = maxIdx(km), pt = pw ? sum(pw, kmOf) : null;
+      return { cap: "Weekly running distance (bars) with average pace (line, faster is higher)", ok: has(km) || has(pc),
+        strip: S("Total distance", num(t) + " km") + S("Weekly average", num(t / n) + " km") +
+          S(bi >= 0 ? `Best week · ${label(weeks[bi])}` : "Best week", bi >= 0 ? num(km[bi]) + " km" : "–") + pctS(vsL, pt == null ? null : pct(t, pt)),
+        cfg: cfgOf(labels, [
+          { type: "bar", label: "Distance", data: km, color: C.run, axis: "y", fmt: (v) => num(v) + " km" },
+          { type: "line", label: "Avg pace", data: pc, color: C.ride, axis: "y1", fmt: (v) => pace(v) + " /km" }],
+          [{ id: "y", t: "km", zero: true }, { id: "y1", t: "min/km", rev: true, fmt: (v) => pace(v) }]) };
     }
-    if (tab === "pace") {
-      const v = runs.map((w) => {
-        const ok = w.filter((r) => r.km > 0 && r.min > 0), km = sum(ok, (r) => r.km);
-        return km > 0 ? sum(ok, (r) => r.min) / km : null;
-      });
-      return { cap: "Average running pace (min/km, total time ÷ total distance, faster is higher)", ok: v.some((x) => x != null), cfg: {
-        type: "line",
-        data: { labels, datasets: [{ data: v, borderColor: C.run, backgroundColor: C.run, tension: 0.25, pointRadius: 3, spanGaps: true }] },
-        options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: (c) => `${pace(c.parsed.y)} min/km` } } },
-          scales: { y: { reverse: true, ticks: { callback: (x) => pace(x) } } } } } };
+    if (tab === "kmelev") {
+      const rows = wk.flat(), et = sum(elev, (x) => x), withE = rows.filter((r) => r.elev != null);
+      const rate = sum(withE, (r) => r.km) > 0 ? et / sum(withE, (r) => r.km) : null;
+      const pe = pw ? sum(pw.map(elevOf), (x) => x) : null;
+      return { cap: "Weekly running distance (bars) with elevation gain (line). Weeks without elevation data are left empty.", ok: has(km) || has(elev),
+        strip: S("Total distance", num(sum(km, (x) => x)) + " km") + S("Elevation gain", num(et, 0) + " m") +
+          S("Climb rate", rate == null ? "–" : num(rate, 0) + " m/km") + pctS("Elevation " + vsL, pe == null ? null : pct(et, pe)),
+        cfg: cfgOf(labels, [
+          { type: "bar", label: "Distance", data: km, color: C.run, axis: "y", fmt: (v) => num(v) + " km" },
+          { type: "line", label: "Elevation", data: elev, color: C.cardio, axis: "y1", fmt: (v) => num(v, 0) + " m" }],
+          [{ id: "y", t: "km", zero: true }, { id: "y1", t: "metres", zero: true }]) };
     }
-    if (tab === "elev") {
-      const v = runs.map((w) => { const e = w.filter((r) => r.elev != null); return e.length ? sum(e, (r) => r.elev) : null; });
-      return { cap: "Weekly running elevation gain (m). Weeks without elevation data are left empty.", ok: v.some((x) => x != null), cfg: barCfg(labels, v, C.run, "m", 0) };
-    }
-    if (tab === "time") {
-      const wk = group(acts, weeks);
-      const col = { Run: C.run, Cycling: C.ride, Swim: C.cardio, "Other cardio": C.other };
-      const ds = ["Run", "Cycling", "Swim", "Other cardio"].map((g) => ({ label: g, backgroundColor: col[g], borderRadius: 2,
-        data: wk.map((w) => sum(w.filter((r) => r.g === g), (r) => r.min) / 60) }));
-      ds.push({ label: "Gym", backgroundColor: C.gym, borderRadius: 2, data: gym.map((w) => sum(w, (r) => r.min) / 60) });
-      return { cap: "Weekly training time by discipline (hours)", ok: ds.some((d) => d.data.some(Boolean)), cfg: {
-        type: "bar", data: { labels, datasets: ds },
-        options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } }, tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ${num(c.parsed.y, 2)} h` } } },
-          scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } } } } };
+    if (tab === "pacehr") {
+      const rows = wk.flat(), p = paceOf(rows), h = hrOf(rows), pp = pw ? paceOf(pw.flat()) : null;
+      const bi = (() => { let i = -1; pc.forEach((x, k) => { if (x != null && (i < 0 || x < pc[i])) i = k; }); return i; })();
+      const diff = p != null && pp != null ? (p - pp) * 60 : null;
+      return { cap: "Average pace (purple, faster is higher) and average heart rate (red). Same pace at a lower heart rate means improving fitness.", ok: has(pc) || has(hr),
+        strip: S("Average pace", p == null ? "–" : pace(p) + " /km") + S(bi >= 0 ? `Fastest week · ${label(weeks[bi])}` : "Fastest week", bi >= 0 ? pace(pc[bi]) + " /km" : "–") +
+          S("Average HR", h == null ? "–" : Math.round(h) + " bpm") +
+          (diff == null ? S("Pace " + vsL, "–") : S("Pace " + vsL, `${diff < 0 ? "−" : "+"}${Math.abs(diff).toFixed(0)} s/km`, diff < 0 ? "good" : diff > 0 ? "bad" : "")),
+        cfg: cfgOf(labels, [
+          { type: "line", label: "Avg pace", data: pc, color: C.ride, axis: "y", fmt: (v) => pace(v) + " /km" },
+          { type: "line", label: "Avg HR", data: hr, color: BAD, axis: "y1", fmt: (v) => Math.round(v) + " bpm" }],
+          [{ id: "y", t: "min/km", rev: true, fmt: (v) => pace(v) }, { id: "y1", t: "bpm" }]) };
     }
     if (tab === "gym") {
-      const v = gym.map((w) => w.length);
-      return { cap: "Gym sessions per week", ok: v.some(Boolean), cfg: barCfg(labels, v, C.gym, "sessions", 0) };
+      const g = group(D.gym, weeks), cnt = g.map((w) => w.length), vol = g.map((w) => sum(w, (r) => r.vol));
+      const tc = sum(cnt, (x) => x), tv = sum(vol, (x) => x), pv = prev ? sum(group(D.gym, prev), (w) => sum(w, (r) => r.vol)) : null;
+      return { cap: "Gym sessions per week (bars) with total volume lifted (line, working sets)", ok: has(cnt),
+        strip: S("Sessions", tc) + S("Weekly average", num(tc / n) + " sessions") + S("Total volume", num(tv, 0) + " kg") + pctS("Volume " + vsL, pv == null ? null : pct(tv, pv)),
+        cfg: cfgOf(labels, [
+          { type: "bar", label: "Sessions", data: cnt, color: C.gym, axis: "y", fmt: (v) => num(v, 0) },
+          { type: "line", label: "Volume", data: vol, color: C.ride, axis: "y1", fmt: (v) => num(v, 0) + " kg" }],
+          [{ id: "y", t: "sessions", zero: true, int: true }, { id: "y1", t: "kg", zero: true }]) };
     }
     // lifts
-    const ex = $("#lift").value, pts = D.lifts.filter((l) => l.ex === ex && l.d >= weeks[0]);
-    const yr = todayUK().slice(0, 4);
-    return { cap: `${ex}: top set weight (solid) and estimated 1RM, Epley (dashed), kg`, ok: pts.length > 0, cfg: {
-      type: "line",
-      data: { labels: pts.map((p) => label(p.d) + (p.d.slice(0, 4) !== yr ? " " + p.d.slice(2, 4) : "")), datasets: [
-        { label: "Top set (kg)", data: pts.map((p) => p.kg), borderColor: C.gym, backgroundColor: C.gym, tension: 0.2, pointRadius: 3 },
-        { label: "Est. 1RM (kg)", data: pts.map((p) => p.e1rm), borderColor: C.gym, borderDash: [6, 4], tension: 0.2, pointRadius: 2 } ] },
-      options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } },
-        tooltip: { callbacks: { afterBody: (i) => (pts[i[0].dataIndex].reps ? `Reps: ${pts[i[0].dataIndex].reps}` : "") } } } } } };
+    const sel = $("#lift").value;
+    if (sel === "__cmp") {
+      const present = MAIN_LIFTS.filter((x) => D.lifts.some((l) => l.ex === x)), cols = [C.run, C.cardio, C.gym, C.ride];
+      const ds = present.map((x, i) => ({ type: "line", label: x, color: cols[i], axis: "y", fmt: (v) => num(v) + " kg",
+        data: group(D.lifts.filter((l) => l.ex === x), weeks).map((w) => { const v = w.map((l) => l.e1rm).filter((q) => q != null); return v.length ? Math.max(...v) : null; }) }));
+      return { cap: "Best estimated 1RM per week for each main lift (Epley, not a recorded max). Gaps mean no session that week.", ok: ds.some((d) => has(d.data)),
+        strip: ds.map((d) => { const v = d.data.filter((q) => q != null); return S(d.label, v.length ? num(Math.max(...v)) + " kg" : "–"); }).join(""),
+        cfg: cfgOf(labels, ds, [{ id: "y", t: "est. 1RM (kg)" }]) };
+    }
+    const pts = D.lifts.filter((l) => l.ex === sel && l.d >= weeks[0]), yr = todayUK().slice(0, 4);
+    const eb = maxIdx(pts.map((p) => p.e1rm)), kb = maxIdx(pts.map((p) => p.kg));
+    const first = pts.find((p) => p.e1rm != null), last = [...pts].reverse().find((p) => p.e1rm != null);
+    const ch = first && last && first !== last ? last.e1rm - first.e1rm : null;
+    return { cap: `${sel}: top set weight (solid) and estimated 1RM, Epley (dashed)`, ok: pts.length > 0,
+      strip: S("Best est. 1RM", eb >= 0 ? num(pts[eb].e1rm) + " kg" : "–") +
+        S("Heaviest top set", kb >= 0 ? `${num(pts[kb].kg)} kg${pts[kb].reps ? " × " + pts[kb].reps : ""}` : "–") + S("Sessions", pts.length) +
+        (ch == null ? S("Est. 1RM change", "–") : S("Est. 1RM change", `${ch > 0 ? "+" : ch < 0 ? "−" : ""}${num(Math.abs(ch))} kg`, ch > 0 ? "good" : ch < 0 ? "bad" : "")),
+      cfg: cfgOf(pts.map((p) => label(p.d) + (p.d.slice(0, 4) !== yr ? " " + p.d.slice(2, 4) : "")), [
+        { type: "line", label: "Top set", data: pts.map((p) => p.kg), color: C.gym, axis: "y", fmt: (v) => num(v) + " kg" },
+        { type: "line", label: "Est. 1RM", data: pts.map((p) => p.e1rm), color: C.gym, axis: "y", dash: [6, 4], fmt: (v) => num(v) + " kg" }],
+        [{ id: "y", t: "kg" }], (i) => (pts[i[0].dataIndex].reps ? `Reps: ${pts[i[0].dataIndex].reps}` : "")) };
   }
 
   function render() {
@@ -137,6 +185,7 @@
     $("#lift").hidden = tab !== "lifts";
     const r = build();
     $("#cap").textContent = r.cap;
+    $("#strip").innerHTML = r.ok ? r.strip : "";
     $("#c").style.display = r.ok ? "" : "none";
     if (!r.ok) { plot.insertAdjacentHTML("beforeend", '<div class="empty">No data in this range</div>'); return; }
     r.cfg.options = Object.assign({ responsive: true, maintainAspectRatio: false, interaction: { mode: "index", intersect: false } }, r.cfg.options);
