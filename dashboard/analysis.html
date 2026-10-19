@@ -55,6 +55,15 @@
   th[data-k] { cursor: pointer; user-select: none; } th[data-k]:hover { color: var(--text); }
   .msgbox { color: var(--muted); padding: 24px 6px; text-align: center; }
   @media (max-width: 900px) { .s4, .s5, .s6, .s7, .s8 { grid-column: span 12; } .hero { grid-template-columns: 1fr; } }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 16px; font: inherit; font-weight: 600; cursor: pointer; margin-bottom: -1px; }
+  .tabs button.on { color: var(--text); border-bottom-color: var(--run); } .tabs button.on[data-t="str"] { border-bottom-color: var(--gym); }
+  .lgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+  .lc { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; } .lc:hover { border-color: var(--muted); } .lc.on { border-color: var(--gym); }
+  .lh { display: flex; justify-content: space-between; font-size: 12px; gap: 6px; } .lh b { font-size: 13px; color: var(--text); }
+  .lv { font-size: 26px; font-weight: 700; letter-spacing: -.02em; } .lv small { font-size: 12px; color: var(--muted); font-weight: 500; }
+  .spark { display: block; width: 100%; height: 28px; margin: 6px 0; }
+  .fr { display: grid; grid-template-columns: 130px 1fr 42px; gap: 8px; align-items: center; padding: 5px 0; font-size: 12px; } .fr b { text-align: right; }
 </style>
 </head>
 <body>
@@ -66,8 +75,9 @@
       <span class="updated" id="updated"></span>
     </div>
   </header>
+  <nav class="tabs" id="tabs"><button data-t="run" class="on">Running</button><button data-t="str">Strength</button></nav>
   <div id="msg" class="msg" hidden></div>
-  <div id="content" class="a-grid" hidden>
+  <div id="content" hidden><div id="tab-run" class="a-grid">
 
     <section class="card hero s12" id="hero"></section>
 
@@ -133,7 +143,36 @@
       <div class="tblwrap" id="tbl"></div>
     </section>
   </div>
+  <div id="tab-str" class="a-grid" hidden>
+    <section class="card s12"><div class="ch"><h3>Strength overview</h3><span class="d">Selected range</span></div><div class="stats tiles" id="strKpi"></div></section>
+
+    <section class="card s8"><div class="ch"><h3>Weekly volume and sets</h3></div><div class="box"><canvas id="volChart"></canvas></div></section>
+    <section class="card s4"><div class="ch"><h3>Push, pull and lower</h3></div>
+      <div class="donut"><div class="dbox"><canvas id="move"></canvas><div class="dc" id="moveC"></div></div><div class="legend" id="moveLg"></div></div>
+      <p class="note">Share of lifting volume by movement group (tracked lifts only).</p></section>
+
+    <section class="card s12"><div class="ch"><h3>Lift scoreboard</h3><span class="d">Estimated 1RM, trend over the range. Click a lift for detail.</span></div><div class="lgrid" id="board"></div></section>
+
+    <section class="card s8"><div class="ch"><h3>Lift detail</h3><select id="strSel" aria-label="Exercise"></select></div>
+      <div class="stats" id="detStrip"></div><div class="box tall"><canvas id="detChart"></canvas></div>
+      <p class="note">Lines: top set weight and estimated 1RM (Epley). Bars: that session's volume for the lift.</p></section>
+    <section class="card s4"><div class="ch"><h3>Recent PRs</h3></div><div id="prFeed"></div><p class="note">A PR is a new best estimated 1RM for that lift.</p></section>
+
+    <section class="card s7"><div class="ch"><h3>Estimated Big 3 total</h3></div><div class="stats" id="b3Strip"></div><div class="box"><canvas id="b3Chart"></canvas></div>
+      <p class="note">Best estimated 1RM per week for bench, squat and deadlift, carried forward between sessions.</p></section>
+    <section class="card s5"><div class="ch"><h3>Rep ranges</h3></div>
+      <div class="donut"><div class="dbox"><canvas id="reps"></canvas><div class="dc" id="repsC"></div></div><div class="legend" id="repsLg"></div></div>
+      <p class="note">Reps in the top set of each tracked lift. Low reps build strength, higher reps build size and endurance.</p></section>
+
+    <section class="card s8"><div class="ch"><h3>Session length and density</h3></div><div class="box"><canvas id="denChart"></canvas></div>
+      <p class="note">Only sessions of 10 minutes or more. Density is kilograms lifted per minute.</p></section>
+    <section class="card s4"><div class="ch"><h3>Last trained</h3></div><div id="fresh"></div><p class="note">Days since each lift was last logged.</p></section>
+
+    <section class="card s12"><div class="ch"><h3>Gym log</h3><span class="d">Latest 15 sessions</span></div><div class="tblwrap" id="gymLog"></div></section>
+  </div>
+  </div>
 </main>
 <script src="analysis.js"></script>
+<script src="strength.js"></script>
 </body>
 </html>
