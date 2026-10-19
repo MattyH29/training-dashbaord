@@ -19,7 +19,7 @@ HEADERS = {
 
 # Properties this script reads (names taken from sync.py).
 EXPECTED = {
-    "NOTION_ACTIVITIES_DB": ["Date", "Type", "Distance (km)", "Duration (min)", "Elevation (m)", "Source ID"],
+    "NOTION_ACTIVITIES_DB": ["Date", "Type", "Distance (km)", "Duration (min)", "Elevation (m)", "Avg HR", "Source ID"],
     "NOTION_GYM_DB": ["Date", "Duration (min)", "Volume (kg)", "Sets", "Source ID"],
     "NOTION_LIFTS_DB": ["Date", "Exercise", "Top Set (kg)", "Top Set Reps", "Est. 1RM (kg)", "Volume (kg)", "Source ID"],
 }
@@ -102,7 +102,7 @@ def build():
         if d:
             activities.append({"d": d, "type": sel(p, "Type") or "Unknown",
                                "km": num(p, "Distance (km)"), "min": num(p, "Duration (min)"),
-                               "elev": num(p, "Elevation (m)")})
+                               "elev": num(p, "Elevation (m)"), "hr": num(p, "Avg HR")})
 
     gym = []
     for pg in dedupe(query_all("NOTION_GYM_DB")):
