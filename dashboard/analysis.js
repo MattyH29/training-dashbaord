@@ -256,7 +256,29 @@ function renderTable() {
   }));
 }
 
-function renderRange() { renderRamp(); renderLong(); renderDonuts(); renderEff(); }
+// ---------- Easy vs hard running (share of max HR; edit these three numbers to taste) ----------
+const MAX_HR = 202, EASY_BELOW = 0.75, HARD_FROM = 0.85;
+const zoneOf = (r) => { const p = r.hr / MAX_HR; return p < EASY_BELOW ? "Easy" : p < HARD_FROM ? "Moderate" : "Hard"; };
+function renderIntensity() {
+  const weeks = rangeWeeks(), wk = group(RUNS, weeks), ok = (r) => r.hr > 0 && r.min > 0;
+  const rows = wk.flat(), v = rows.filter(ok), zs = ["Easy", "Moderate", "Hard"];
+  const col = { Easy: C.cardio, Moderate: C.gym, Hard: BAD };
+  const hrs = (arr, z) => sum(arr.filter((r) => zoneOf(r) === z), (r) => r.min) / 60, total = sum(v, (r) => r.min) / 60;
+  const pc = (z) => (total > 0 ? (hrs(v, z) / total) * 100 : null), fmt = (x) => (x == null ? "–" : Math.round(x) + "%");
+  $("#intStrip").innerHTML = S("Easy", fmt(pc("Easy")), pc("Easy") >= 75 ? "good" : "") + S("Moderate", fmt(pc("Moderate"))) +
+    S("Hard", fmt(pc("Hard")), pc("Hard") > 25 ? "bad" : "") + S("Runs without HR", rows.length - v.length);
+  const datasets = zs.map((z) => ({ type: "bar", label: z, data: wk.map((w) => hrs(w.filter(ok), z)), backgroundColor: col[z], borderRadius: 2, yAxisID: "y" }));
+  datasets.push({ type: "line", label: "Easy share", yAxisID: "y1", borderColor: C.ride, backgroundColor: C.ride, tension: 0.25, pointRadius: 3, spanGaps: true,
+    data: wk.map((w) => { const x = w.filter(ok), t = sum(x, (r) => r.min); return t > 0 ? (sum(x.filter((r) => zoneOf(r) === "Easy"), (r) => r.min) / t) * 100 : null; }) });
+  draw("intChart", { type: "bar", data: { labels: weeks.map(label), datasets }, options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } },
+    tooltip: { callbacks: { label: (c) => (c.dataset.type === "line" ? `${c.dataset.label}: ${Math.round(c.parsed.y)}%` : `${c.dataset.label}: ${num(c.parsed.y, 2)} h`) } } },
+    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: "hours" } },
+      y1: { position: "right", min: 0, max: 100, grid: { drawOnChartArea: false }, title: { display: true, text: "% easy" } } } } }, v.length > 0);
+  const items = zs.map((z) => ({ l: z, v: hrs(v, z), c: col[z], f: `${num(hrs(v, z), 1)} h · ${fmt(pc(z))}` }));
+  donut("int", items, (t) => `<div><b>${num(t, 0)} h</b><span>with HR</span></div>`);
+  $("#intNote").textContent = `Easy under ${Math.round(MAX_HR * EASY_BELOW)} bpm, moderate ${Math.round(MAX_HR * EASY_BELOW)} to ${Math.round(MAX_HR * HARD_FROM) - 1}, hard ${Math.round(MAX_HR * HARD_FROM)}+ (max HR ${MAX_HR}). Many coaches aim for roughly 80% easy.`;
+}
+function renderRange() { renderRamp(); renderLong(); renderDonuts(); renderEff(); renderIntensity(); }
 function renderActive() { if (TAB === "run") renderRange(); else renderStrength(); }
 function showTab(t) {
   TAB = t;
