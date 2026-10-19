@@ -141,7 +141,7 @@ function renderRamp() {
   $("#rampN").textContent = r == null ? "–" : r.toFixed(2) + "×";
   $("#rampN").style.color = v[2];
   $("#rampV").textContent = v[1]; $("#rampV").style.color = v[2];
-  $("#rampTxt").innerHTML = `Last full week compared with the average of the 4 weeks before it. Roughly 0.8 to 1.3× is a steady build and above 1.5× is a spike. A simple guide, not medical advice.<br><br>This week so far: <b>${num(val[val.length - 1])} ${unit}</b>`;
+  $("#rampTxt").innerHTML = `Last full week compared with the average of the 4 weeks before it. Roughly 0.8 to 1.3× is a steady build and above 1.5× is a spike.<br><br>This week so far: <b>${num(val[val.length - 1])} ${unit}</b>`;
 }
 
 // ---------- 4. Long runs and time on feet ----------
