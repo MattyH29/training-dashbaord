@@ -65,30 +65,33 @@ function renderHero() {
       : "Add the <b>NOTION_RACES_DB</b> secret, share the database with the integration and re-run the workflow."}</div></div>`;
     return;
   }
+  // Built from what you have actually done, since the plan is only written a week at a time.
   const left = days(today, race.d), taper = addDays(race.d, -14), toTaper = days(today, taper);
-  const plan = D.plan.filter((p) => p.d >= today && p.d <= race.d);
-  const ws = [];
-  for (let w = monday(today); w <= race.d; w = addDays(w, 7)) ws.push(w);
-  const peak = Math.max(0, ...group(plan, ws).map(kmOf));
-  const longestDone = Math.max(0, ...RUNS.map((r) => r.km || 0));
-  const longestPlan = Math.max(0, ...plan.map((p) => p.km || 0));
-  const first = D.plan.length ? D.plan[0].d : null, total = first ? days(first, race.d) : 0;
-  const pct = total > 0 ? Math.max(0, Math.min(100, (days(first, today) / total) * 100)) : null;
-  const tp = total > 0 ? Math.max(0, Math.min(100, (days(first, taper) / total) * 100)) : null;
-  const hasPlan = D.plan.length > 0;
+  const tw = monday(today), runsIn = (w) => group(RUNS, [w])[0];
+  const thisKm = kmOf(runsIn(tw)), planKm = sum(group(D.plan, [tw])[0], (p) => p.km);
+  const avgOf = (end) => sum(Array.from({ length: 4 }, (_, i) => addDays(end, -7 * (4 - i))), (w) => kmOf(runsIn(w))) / 4;
+  const a4 = avgOf(tw), p4 = avgOf(addDays(tw, -28)), ch = p4 > 0 ? ((a4 - p4) / p4) * 100 : null;
+  const byWeek = new Map();
+  RUNS.forEach((r) => byWeek.set(monday(r.d), (byWeek.get(monday(r.d)) || 0) + (r.km || 0)));
+  const peak = [...byWeek].sort((a, b) => b[1] - a[1])[0];
+  const longest = RUNS.reduce((b, r) => (r.km > (b?.km || 0) ? r : b), null);
+  let streak = 0, w = runsIn(tw).length ? tw : addDays(tw, -7);
+  while (runsIn(w).length && streak < 520) { streak++; w = addDays(w, -7); }
+  const taperTxt = toTaper > 0 ? `A typical 2-week taper would start in ${toTaper} days (${fmtDate(taper)})` : "Inside the typical 2-week taper window";
   el.innerHTML = `
     <div><div class="eyebrow">Race countdown</div><div class="big">${left}</div><div class="unit">${left === 1 ? "day" : "days"} to go</div></div>
     <div><div class="rname">${esc(race.name)}</div>
       <div class="d">${fmtDate(race.d)} · ${(left / 7).toFixed(1)} weeks${race.km ? ` · ${num(race.km, 0)} km` : ""}${race.elev ? ` · ${num(race.elev, 0)} m climb` : ""}</div>
       <div class="stats tiles">
-        ${S("Planned km remaining", hasPlan ? num(sum(plan, (p) => p.km), 0) + " km" : "–")}
-        ${S("Sessions remaining", hasPlan ? plan.filter((p) => p.km > 0 || p.min > 0).length : "–")}
-        ${S("Peak planned week", hasPlan ? num(peak, 0) + " km" : "–")}
-        ${S("Longest run so far", num(longestDone) + " km")}
-        ${S("Longest planned run", hasPlan && longestPlan ? num(longestPlan) + " km" : "–")}
+        ${S(planKm > 0 ? `Run this week · ${num(planKm, 0)} km planned` : "Run this week", num(thisKm) + " km")}
+        ${S("4-week average", num(a4) + " km/wk")}
+        ${S("vs previous 4 weeks", ch == null ? "–" : `${ch > 0 ? "+" : ch < 0 ? "−" : ""}${Math.abs(ch).toFixed(0)}%`, ch > 0 ? "good" : ch < 0 ? "bad" : "")}
+        ${S(peak ? `Peak week · ${label(peak[0])}` : "Peak week", peak ? num(peak[1]) + " km" : "–")}
+        ${S(longest ? `Longest run · ${label(longest.d)}` : "Longest run", longest ? num(longest.km) + " km" : "–")}
+        ${S("Weeks running in a row", streak)}
       </div>
-      ${pct == null ? "" : `<div class="pbar"><i style="width:${pct}%"></i><u style="left:${tp}%"></u></div>
-      <div class="d">Plan ${Math.round(pct)}% elapsed · ${toTaper > 0 ? `a typical 2-week taper would start in ${toTaper} days (orange marker)` : "inside the typical 2-week taper window"}</div>`}
+      ${planKm > 0 ? `<div class="pbar"><i style="width:${Math.min(thisKm / planKm, 1) * 100}%"></i></div>
+      <div class="d">${Math.round((thisKm / planKm) * 100)}% of this week's planned distance · ${taperTxt}</div>` : `<div class="d" style="margin-top:14px">${taperTxt}</div>`}
     </div>`;
 }
 
