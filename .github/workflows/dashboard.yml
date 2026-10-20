@@ -2,7 +2,7 @@ name: Build and deploy dashboard
 
 on:
   schedule:
-    - cron: "30 5 * * *"   # daily, 05:30 UTC (06:30 or 07:30 UK time depending on DST)
+    - cron: "45 */3 * * *"
   workflow_dispatch:
   push:
     branches: [main]
