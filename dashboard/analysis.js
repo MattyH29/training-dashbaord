@@ -270,8 +270,8 @@ function renderIntensity() {
   const pc = (z) => (total > 0 ? (hrs(v, z) / total) * 100 : null), fmt = (x) => (x == null ? "–" : Math.round(x) + "%");
   $("#intStrip").innerHTML = S("Easy", fmt(pc("Easy")), pc("Easy") >= 75 ? "good" : "") + S("Moderate", fmt(pc("Moderate"))) +
     S("Hard", fmt(pc("Hard")), pc("Hard") > 25 ? "bad" : "") + S("Runs without HR", rows.length - v.length);
-  const datasets = zs.map((z) => ({ type: "bar", label: z, data: wk.map((w) => hrs(w.filter(ok), z)), backgroundColor: col[z], borderRadius: 2, yAxisID: "y" }));
-  datasets.push({ type: "line", label: "Easy share", yAxisID: "y1", borderColor: C.ride, backgroundColor: C.ride, tension: 0.25, pointRadius: 3, spanGaps: true,
+  const datasets = zs.map((z) => ({ type: "bar", label: z, data: wk.map((w) => hrs(w.filter(ok), z)), backgroundColor: col[z], borderRadius: 2, yAxisID: "y", order: 2 }));
+  datasets.push({ type: "line", label: "Easy share", yAxisID: "y1", order: 1, borderColor: C.ride, backgroundColor: C.ride, tension: 0.25, pointRadius: 3, spanGaps: true,
     data: wk.map((w) => { const x = w.filter(ok), t = sum(x, (r) => r.min); return t > 0 ? (sum(x.filter((r) => zoneOf(r) === "Easy"), (r) => r.min) / t) * 100 : null; }) });
   draw("intChart", { type: "bar", data: { labels: weeks.map(label), datasets }, options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } },
     tooltip: { callbacks: { label: (c) => (c.dataset.type === "line" ? `${c.dataset.label}: ${Math.round(c.parsed.y)}%` : `${c.dataset.label}: ${num(c.parsed.y, 2)} h`) } } },
