@@ -260,7 +260,7 @@ function renderTable() {
 }
 
 // ---------- Easy vs hard running (share of max HR; edit these three numbers to taste) ----------
-const MAX_HR = 202, EASY_BELOW = 0.75, HARD_FROM = 0.85;
+const MAX_HR = 202, EASY_BELOW = 165 / MAX_HR, HARD_FROM = 181 / MAX_HR; // easy under 165 bpm, moderate 165-180, hard 181+
 const zoneOf = (r) => { const p = r.hr / MAX_HR; return p < EASY_BELOW ? "Easy" : p < HARD_FROM ? "Moderate" : "Hard"; };
 function renderIntensity() {
   const weeks = rangeWeeks(), wk = group(RUNS, weeks), ok = (r) => r.hr > 0 && r.min > 0;
