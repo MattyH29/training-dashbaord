@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Content panel</title>
+<link rel="stylesheet" href="style.css">
+<script src="shared.js"></script>
+<style>
+  .kp { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .kt { border-left: 3px solid var(--accent); padding: 4px 0 4px 10px; } .kt b { display: block; font-size: 24px; line-height: 1.2; }
+  .kt span { color: var(--muted); font-size: 11px; }
+  .sbar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); margin: 5px 0 3px; }
+  .sbar i { display: block; height: 100%; }
+  .row1 { margin-bottom: 10px; } .row1:last-child { margin-bottom: 0; }
+  .chip { display: inline-block; border: 1px solid var(--line); border-radius: 12px; padding: 2px 9px; margin: 0 6px 6px 0; font-size: 12px; }
+  .more { background: none; border: 0; color: var(--muted); cursor: pointer; font: inherit; font-size: 12px; padding: 4px 0 0; }
+  .lg2 { display: flex; gap: 12px; font-size: 11px; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
+  .lg2 i { display: inline-block; width: 12px; height: 7px; border-radius: 2px; margin-right: 4px; background: var(--muted); }
+</style>
+</head>
+<body class="side">
+<div id="msg" class="msg" hidden></div>
+<div id="out" hidden>
+  <div class="card"><h3>Content pipeline</h3><div class="kp" id="kp"></div></div>
+  <div class="card"><h3>Planned by content type</h3><div id="types"></div>
+    <div class="lg2"><span><i style="opacity:1"></i>Scheduled</span><span><i style="opacity:.55"></i>Backlog</span><span><i style="opacity:.25"></i>Published</span></div></div>
+  <div class="card"><h3>Videos per template</h3><div id="tmpl"></div><p class="note" id="tnote"></p></div>
+  <div class="card"><h3>Needs ideas</h3><div id="gaps"></div></div>
+  <div class="d" id="upd" style="text-align:right"></div>
+</div>
+<script>
+(async () => {
+  const msg = (h) => { $("#msg").innerHTML = h; $("#msg").hidden = false; };
+  const e = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const NC = { default: "#9b9a97", gray: "#9b9a97", brown: "#a98a6a", orange: "#d9730d", yellow: "#cb912f", green: "#4dab9a", blue: "#529cca", purple: "#9a6dd7", pink: "#e255a1", red: "#ff7369" };
+  let D;
+  try { const r = await fetch("content.json?v=" + Date.now()); if (!r.ok) throw 0; D = await r.json(); }
+  catch { return msg("<b>No content data yet.</b> content.json could not be loaded. Run the “Build and deploy dashboard” workflow."); }
+  if (!D.has_db) return msg("<b>Content data unavailable.</b> Add the <b>NOTION_VIDEO_DB</b> and <b>NOTION_TEMPLATES_DB</b> secrets, share both databases with the integration and re-run the workflow.");
+  $("#out").hidden = false;
+
+  const ideas = D.ideas, live = ideas.filter((i) => !i.pub);
+  const backlog = live.filter((i) => !i.sched), sched = live.filter((i) => i.sched), race = ideas.filter((i) => i.race);
+  const T = (v, l, c) => `<div class="kt ${c}"><b>${v}</b><span>${l}</span></div>`;
+  $("#kp").innerHTML = T(backlog.length, "Ideas in backlog", "run") + T(sched.length, "In weekly schedule", "cardio") +
+    T(ideas.filter((i) => i.pub).length, "Published", "gym") + T(`${race.filter((i) => !i.pub).length}<small style="font-size:12px;color:var(--muted)"> / ${race.length}</small>`, "Race videos planned / total", "gym");
+
+  // By content type (Notion option order and colours)
+  const types = D.types.map((t) => ({ name: t.name, col: NC[t.color] || NC.default }));
+  ideas.forEach((i) => { const n = i.type || "Unassigned"; if (!types.some((t) => t.name === n)) types.push({ name: n, col: NC.default }); });
+  const rows = types.map((t) => {
+    const r = ideas.filter((i) => (i.type || "Unassigned") === t.name);
+    return { ...t, s: r.filter((i) => !i.pub && i.sched).length, b: r.filter((i) => !i.pub && !i.sched).length, p: r.filter((i) => i.pub).length };
+  }).filter((t) => t.s + t.b + t.p > 0 || D.types.some((x) => x.name === t.name));
+  const mx = Math.max(1, ...rows.map((t) => t.s + t.b + t.p));
+  $("#types").innerHTML = rows.map((t) => `<div class="row1"><div class="li" style="border:0;padding:0"><span><span class="dot" style="background:${t.col}"></span>${e(t.name)}</span><span class="r"><b>${t.s + t.b}</b> <small style="display:inline">planned</small></span></div>
+    <div class="sbar">${[[t.s, 1], [t.b, 0.55], [t.p, 0.25]].map(([n, o]) => `<i style="width:${(n / mx) * 100}%;background:${t.col};opacity:${o}"></i>`).join("")}</div>
+    <div class="d">${t.s} scheduled · ${t.b} backlog · ${t.p} published</div></div>`).join("");
+
+  // Videos per template
+  const use = D.templates.map((n) => { const r = ideas.filter((i) => i.tmpl.includes(n)); return { n, all: r.length, pl: r.filter((i) => !i.pub).length }; })
+    .sort((a, b) => b.pl - a.pl || b.all - a.all || a.n.localeCompare(b.n));
+  const tmx = Math.max(1, ...use.map((u) => u.all));
+  const draw = (all) => {
+    $("#tmpl").innerHTML = (all ? use : use.slice(0, 8)).map((u) => `<div class="row1"><div class="li" style="border:0;padding:0"><span>${e(u.n)}</span><span class="r"><b>${u.pl}</b> <small style="display:inline">planned · ${u.all} total</small></span></div>
+      <div class="sbar"><i style="width:${(u.pl / tmx) * 100}%;background:var(--run)"></i><i style="width:${((u.all - u.pl) / tmx) * 100}%;background:var(--run);opacity:.3"></i></div></div>`).join("") +
+      (use.length > 8 ? `<button class="more" id="more">${all ? "Show fewer" : `Show all ${use.length} templates`}</button>` : "");
+    if ($("#more")) $("#more").onclick = () => draw(!all);
+  };
+  draw(false);
+  const none = ideas.filter((i) => !i.tmpl.length).length;
+  $("#tnote").textContent = `${use.length} templates · ${use.filter((u) => !u.all).length} unused · ${none} of ${ideas.length} ideas (${ideas.length ? Math.round((none / ideas.length) * 100) : 0}%) have no template.`;
+
+  // Content types with nothing in the backlog
+  const empty = rows.filter((t) => t.b === 0 && D.types.some((x) => x.name === t.name) && !/^(race day|other)$/i.test(t.name));
+  $("#gaps").innerHTML = empty.length ? empty.map((t) => `<span class="chip" style="border-color:${t.col}">${e(t.name)}</span>`).join("") + '<p class="note">No unscheduled ideas waiting for these.</p>'
+    : '<p class="note">Every content type has an idea in the backlog.</p>';
+  $("#upd").textContent = "Updated " + new Date(D.generated_at).toLocaleString("en-GB", { timeZone: "Europe/London", dateStyle: "medium", timeStyle: "short" });
+})();
+</script>
+</body>
+</html>
