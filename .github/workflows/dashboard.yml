@@ -2,7 +2,7 @@ name: Build and deploy dashboard
 
 on:
   schedule:
-    - cron: "45 */3 * * *"
+    - cron: "45 * * * *"   # hourly at 45 past, after the sync workflow (which runs at 17 past)
   workflow_dispatch:
   push:
     branches: [main]
@@ -42,6 +42,8 @@ jobs:
           NOTION_LIFTS_DB: ${{ secrets.NOTION_LIFTS_DB }}
           NOTION_PLAN_DB: ${{ secrets.NOTION_PLAN_DB }}
           NOTION_RACES_DB: ${{ secrets.NOTION_RACES_DB }}
+          NOTION_VIDEO_DB: ${{ secrets.NOTION_VIDEO_DB }}
+          NOTION_TEMPLATES_DB: ${{ secrets.NOTION_TEMPLATES_DB }}
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
