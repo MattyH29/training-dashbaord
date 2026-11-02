@@ -1,9 +1,9 @@
 // Strength tab. Uses globals from analysis.js and shared.js.
 // Movement groups for the lifts you track. Edit this when you add exercises in sync.py.
 const MOVE = { "Bench Press": "Push", "Shoulder Press": "Push", "Barbell Row": "Pull", "Lat Pulldown": "Pull",
-  Squat: "Lower", Deadlift: "Lower", RDL: "Lower", "Bulgarian Split Squat": "Lower" };
+  Squat: "Lower", Deadlift: "Lower", RDL: "Lower", "Bulgarian Split Squat": "Lower", "Hang Power Clean": "Power" };
 const moveOf = (ex) => MOVE[ex] || "Other";
-const moveCol = () => ({ Push: C.gym, Pull: C.ride, Lower: C.cardio, Other: C.other });
+const moveCol = () => ({ Push: C.gym, Pull: C.ride, Lower: C.cardio, Power: C.run, Other: C.other });
 let STR_SEL = null;
 
 const liftRows = (ex) => D.lifts.filter((l) => l.ex === ex).sort((a, b) => a.d.localeCompare(b.d));
