@@ -44,6 +44,7 @@ jobs:
           NOTION_RACES_DB: ${{ secrets.NOTION_RACES_DB }}
           NOTION_VIDEO_DB: ${{ secrets.NOTION_VIDEO_DB }}
           NOTION_TEMPLATES_DB: ${{ secrets.NOTION_TEMPLATES_DB }}
+          CONTENT_TITLES: ${{ vars.CONTENT_TITLES }}
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
