@@ -174,28 +174,32 @@ def export_races():
 
 
 def export_content():
-    """Content Planner: counts only. No idea titles or notes are exported."""
+    """Content Planner export. Idea titles are included unless CONTENT_TITLES=0. Notes are never exported."""
     if not os.environ.get("NOTION_TEMPLATES_DB"):
         raise RuntimeError("NOTION_TEMPLATES_DB is not set")
+    show_titles = os.environ.get("CONTENT_TITLES") != "0"
     vdb = call("GET", f"databases/{os.environ['NOTION_VIDEO_DB']}")["properties"]
     tdb = call("GET", f"databases/{os.environ['NOTION_TEMPLATES_DB']}")["properties"]
+    vt = next(n for n, p in vdb.items() if p["type"] == "title")
     tt = next(n for n, p in tdb.items() if p["type"] == "title")
-    m = {"type": pick(vdb, {"select"}, "type", True), "sched": pick(vdb, {"relation"}, "schedul", True),
-         "tmpl": pick(vdb, {"relation"}, "templat", True), "pub": pick(vdb, {"checkbox"}, "publish", True),
+    m = {"type": pick(vdb, {"select"}, "type", True), "date": pick(vdb, {"date"}, "post|date"),
+         "tmpl": pick(vdb, {"relation"}, "templat", True), "pub": pick(vdb, {"checkbox"}, "publish|posted|done", True),
          "race": pick(vdb, {"relation", "checkbox", "select", "multi_select"}, "race", True)}
-    print(f"Video Ideas property mapping: {m}")
+    print(f"Video Ideas property mapping: {m} (titles {'on' if show_titles else 'off'})")
     types = [{"name": o["name"], "color": o["color"]} for o in vdb[m["type"]]["select"]["options"]] if m["type"] else []
     names = {pg["id"]: "".join(t["plain_text"] for t in pg["properties"][tt]["title"]) or "Untitled"
              for pg in query_all("NOTION_TEMPLATES_DB")}
     ideas = []
     for pg in query_all("NOTION_VIDEO_DB"):
         p = pg["properties"]
-        rel = lambda k: [r["id"] for r in (p.get(k) or {}).get("relation", [])] if k else []
+        rel = [r["id"] for r in (p.get(m["tmpl"]) or {}).get("relation", [])] if m["tmpl"] else []
         t = (val_names(p, m["type"]) or [None])[0] if m["type"] else None
         x = (p.get(m["race"]) or {}) if m["race"] else {}
         race = bool(x.get("relation") or x.get("checkbox") or x.get("select") or x.get("multi_select")) or t == "Race Day"
-        ideas.append({"type": t, "sched": bool(rel(m["sched"])), "pub": bool(m["pub"] and p[m["pub"]]["checkbox"]),
-                      "tmpl": [names[i] for i in rel(m["tmpl"]) if i in names], "race": race})
+        ideas.append({"t": ("".join(r["plain_text"] for r in p[vt]["title"]) or None) if show_titles else None,
+                      "type": t, "d": day(p, m["date"]) if m["date"] else None,
+                      "pub": bool(p[m["pub"]]["checkbox"]) if m["pub"] else None,
+                      "tmpl": [names[i] for i in rel if i in names], "race": race})
     return {"types": types, "templates": sorted(names.values()), "ideas": ideas}
 
 
